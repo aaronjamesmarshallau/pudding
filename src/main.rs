@@ -1,3 +1,23 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+
+#[macro_use]
+extern crate rocket;
+
+pub mod handlers;
+
 fn main() {
-    println!("Hello, world!");
+    rocket::ignite()
+        .mount(
+            "/",
+            routes![
+
+            ],
+        )
+        .launch();
 }
+
+/*
+ * GET /api/files/{id}
+ * PUT /api/files/{id}
+ * POST /api/files
+ */
