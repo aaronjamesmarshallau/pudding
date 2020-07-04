@@ -1,3 +1,5 @@
+use serde::Serialize;
+use rocket_contrib::json::Json;
 use rocket::http::{ContentType, Status};
 use rocket::response::{Responder, Stream};
 use rocket::Request;
@@ -33,6 +35,20 @@ impl FileResponse {
 impl<'r> Responder<'r> for FileResponse {
     fn respond_to(self, req: &Request) -> rocket::response::Result<'r> {
         rocket::response::Response::build_from(self.file_data.respond_to(req).unwrap())
+            .status(self.status)
+            .header(ContentType::JSON)
+            .ok()
+    }
+}
+
+pub struct ApiResponse<T> {
+    pub json: Json<Option<T>>,
+    pub status: Status,
+}
+
+impl<'r, T: Serialize> Responder<'r> for ApiResponse<T> {
+    fn respond_to(self, req: &Request) -> rocket::response::Result<'r> {
+        rocket::response::Response::build_from(self.json.respond_to(req).unwrap())
             .status(self.status)
             .header(ContentType::JSON)
             .ok()
