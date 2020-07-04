@@ -4,6 +4,7 @@
 extern crate rocket;
 
 pub mod handlers;
+pub mod models;
 
 fn main() {
     rocket::ignite()
