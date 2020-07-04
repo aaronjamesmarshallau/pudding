@@ -20,11 +20,18 @@ pub fn get_file(file_id: i32, bucket_metadata: State<BucketMetadata>) -> Result<
     let credentials = metadata.credentials.clone();
 
     let bucket = Bucket::new(bucket_name, region, credentials).unwrap();
+    let mut cursor = Cursor::new(Vec::new());
+    let result = bucket.get_object_stream_blocking(&format!("/{}", file_id), &mut cursor);
 
-    let (data, code) = bucket.get_object_blocking(format!("/{}", file_id)).unwrap();
-
-    let cursor = Cursor::new(data);
-    Ok(cursor.into())
+    match result {
+        Ok(response_code) => {
+            Ok(cursor.into())
+        },
+        Err(error) => {
+            println!("An error occurred: {}\n\treturning NotFound", error);
+            Err(NotFound("The requested resource could not be retrieved.".into()))
+        }
+    }
 }
 
 #[put("/api/files/<file_id>", data = "<file_data>")]
