@@ -1,42 +1,50 @@
+use crate::handlers::files::ContentLength;
+use std::io::Read;
 use serde::Serialize;
 use rocket_contrib::json::Json;
 use rocket::http::{ContentType, Status};
-use rocket::response::{Responder, Stream};
+use rocket::response::{Responder};
 use rocket::Request;
-use std::io::Cursor;
 
 /// A response for a file stream
-pub struct FileResponse {
-    file_data: Stream<Cursor<Vec<u8>>>,
+pub struct FileResponse<T: Read + 'static> {
+    file_data: Option<T>,
     status: Status,
+    content_type: ContentType,
+    content_length: ContentLength,
 }
 
-fn empty_cursor() -> Cursor<Vec<u8>> {
-    Cursor::new(Vec::new())
-}
-
-impl FileResponse {
-    pub fn not_found() -> FileResponse {
-        FileResponse::new(empty_cursor(), Status::NotFound)
-    }
-
-    pub fn ok(cur: Cursor<Vec<u8>>) -> FileResponse {
-        FileResponse::new(cur, Status::Ok)
-    }
-
-    pub fn new(cur: Cursor<Vec<u8>>, status: Status) -> FileResponse {
+impl<T: Read + 'static> FileResponse<T> {
+    pub fn new(
+        read: Option<T>,
+        status: Status,
+        content_type: ContentType,
+        content_length: ContentLength
+    ) -> Self {
         FileResponse {
-            file_data: cur.into(),
+            file_data: read,
             status: status,
+            content_length,
+            content_type,
         }
     }
+
+    pub fn ok(cur: T, content_type: ContentType, content_length: ContentLength) -> Self {
+        FileResponse::new(Some(cur), Status::Ok, content_type, content_length)
+    }
+
+    pub fn not_found() -> Self {
+        FileResponse::new(None, Status::BadRequest, ContentType::default(), ContentLength(0))
+    }
 }
 
-impl<'r> Responder<'r> for FileResponse {
-    fn respond_to(self, req: &Request) -> rocket::response::Result<'r> {
-        rocket::response::Response::build_from(self.file_data.respond_to(req).unwrap())
+impl<'r, T: Read> Responder<'r> for FileResponse<T> {
+    fn respond_to(self, _: &Request) -> rocket::response::Result<'r> {
+        rocket::response::Response::build()
+            .streamed_body(self.file_data.unwrap())
             .status(self.status)
-            .header(ContentType::JSON)
+            .header(self.content_type)
+            .header(self.content_length)
             .ok()
     }
 }

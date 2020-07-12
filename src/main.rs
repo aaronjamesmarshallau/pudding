@@ -35,7 +35,7 @@ fn main() {
         .mount(
             "/",
             routes![
-                //handlers::files::get_file,
+                handlers::files::get_file,
                 handlers::files::create_file,
             ],
         )

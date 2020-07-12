@@ -1,5 +1,8 @@
+use std::io::Empty;
+use rocket::http::ContentType;
+use rocket::http::Header;
+use rusoto_s3::GetObjectRequest;
 use rocket::request::Outcome;
-use std::error::Error;
 use rocket::Request;
 use rocket::request::FromRequest;
 use crate::models::results::UploadResult;
@@ -13,37 +16,76 @@ use rusoto_core::ByteStream;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-use std::io::{Cursor, Read};
+use std::io::{Read};
 
 use rocket::State;
 use rocket::Data;
 use rocket::http::Status;
 
-use rusoto_core::{HttpClient, Region};
-use rusoto_s3::{PutObjectRequest, S3Client, StreamingBody, S3};
+use rusoto_core::{HttpClient};
+use rusoto_s3::{PutObjectRequest, S3Client, S3};
 
-// #[get("/api/files/<file_id>")]
-// pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>) -> FileResponse {
-//     let metadata = bucket_metadata.inner();
-//     let bucket_name = &metadata.bucket_name;
-//     let region = metadata.region.clone();
-//     let credentials = metadata.credentials.clone();
+#[get("/api/files/<file_id>")]
+pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>) -> FileResponse<Empty> {
+    let metadata = bucket_metadata.inner();
+    let bucket_name = &metadata.bucket_name;
+    let region = metadata.region.clone();
+    let credentials = metadata.credentials.clone();
 
-//     let mut cursor = Cursor::new(Vec::new());
-//     let bucket = Bucket::new(bucket_name, region, credentials).unwrap();
-//     let result = bucket.get_object_stream_blocking(&format!("/{}", file_id), &mut cursor);
+    let client = S3Client::new_with(
+        HttpClient::new().expect("failed to create request dispatcher"),
+        credentials,
+        region,
+    );
 
-//     match result {
-//         Ok(response_code) => {
-//             println!("Request finished successfully with response code {}", response_code);
-//             FileResponse::ok(cursor.into())
-//         },
-//         Err(error) => {
-//             println!("An error occurred: {}\n\treturning NotFound", error);
-//             FileResponse::not_found()
-//         }
-//     }
-// }
+    let request = GetObjectRequest {
+        bucket: bucket_name.to_owned(),
+        key: file_id.clone(),
+        ..Default::default()
+    };
+
+    let future = client.get_object(request);
+
+    let mut runtime = match Runtime::new() {
+        Ok(rt) => rt,
+        Err(error) => {
+            println!("Failed to create tokio runtime: {}", error);
+            return FileResponse::not_found()
+        }
+    };
+
+    let result = runtime.block_on(future);
+
+    match result {
+        Ok(response_object) => {
+            println!("Request for file {} finished successfully: {:?}", file_id, response_object);
+            let bytestream = response_object.body;
+
+            runtime.block_on(async {
+                let vec = Vec::new();
+                while let Some()
+                println!("{:?}", bytes);
+            });
+
+            //let read = bytestream_to_read(bytestream.unwrap());
+
+            FileResponse::not_found()
+
+            // FileResponse::ok(
+            //     read,
+            //     response_object.content_type
+            //         .unwrap_or("application/octet-stream".to_string())
+            //         .parse()
+            //         .unwrap_or(ContentType::Binary),
+            //     ContentLength(response_object.content_length.unwrap_or(0))
+            // )
+        },
+        Err(error) => {
+            println!("An error occurred: {}\n\treturning NotFound", error);
+            FileResponse::not_found()
+        }
+    }
+}
 
 pub trait Chunks: Sized {
     fn chunks(self, size: usize) -> Chunk<Self> {
@@ -83,6 +125,10 @@ where
     }
 }
 
+fn bytestream_to_read(bs: ByteStream) -> impl Read + Send {
+    bs.into_blocking_read()
+}
+
 fn read_to_bytestream<R: Read + Send + Sync + 'static>(read: R) -> ByteStream {
     let bytes = read.bytes(); // Iterator<Item = Result<u8>>
     let chunks = bytes.chunks(4096); // Iterator<Item = Vec<Result<u8>>>
@@ -92,7 +138,7 @@ fn read_to_bytestream<R: Read + Send + Sync + 'static>(read: R) -> ByteStream {
     ByteStream::new(stream)
 }
 
-pub struct ContentLength(i64);
+pub struct ContentLength(pub i64);
 
 #[derive(Debug)]
 pub enum ContentLengthError {
@@ -113,6 +159,12 @@ impl<'a, 'r> FromRequest<'a, 'r> for ContentLength {
             1 => Outcome::Failure((Status::BadRequest, ContentLengthError::Invalid)),
             _ => Outcome::Failure((Status::BadRequest, ContentLengthError::BadCount)),
         }
+    }
+}
+
+impl From<ContentLength> for Header<'_> {
+    fn from(content_length: ContentLength) -> Self {
+        Header::new("Content-Length", content_length.0.to_string())
     }
 }
 
