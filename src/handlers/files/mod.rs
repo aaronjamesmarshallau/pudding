@@ -1,4 +1,3 @@
-use std::io::Empty;
 use rocket::http::ContentType;
 use rocket::http::Header;
 use rusoto_s3::GetObjectRequest;
@@ -10,7 +9,7 @@ use crate::models::responses::ApiResponse;
 use crate::models::state::BucketMetadata;
 use crate::models::responses::FileResponse;
 use core::iter::FromIterator;
-use futures::stream;
+use futures::stream::{self};
 use rocket_contrib::json::Json;
 use rusoto_core::ByteStream;
 use tokio::runtime::Runtime;
@@ -26,7 +25,7 @@ use rusoto_core::{HttpClient};
 use rusoto_s3::{PutObjectRequest, S3Client, S3};
 
 #[get("/api/files/<file_id>")]
-pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>) -> FileResponse<Empty> {
+pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>, runtime: State<Runtime>) -> FileResponse<impl Read> {
     let metadata = bucket_metadata.inner();
     let bucket_name = &metadata.bucket_name;
     let region = metadata.region.clone();
@@ -45,40 +44,22 @@ pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>) -> File
     };
 
     let future = client.get_object(request);
-
-    let mut runtime = match Runtime::new() {
-        Ok(rt) => rt,
-        Err(error) => {
-            println!("Failed to create tokio runtime: {}", error);
-            return FileResponse::not_found()
-        }
-    };
-
-    let result = runtime.block_on(future);
+    let result = runtime.handle().block_on(future);
 
     match result {
         Ok(response_object) => {
             println!("Request for file {} finished successfully: {:?}", file_id, response_object);
             let bytestream = response_object.body;
+            let read = bytestream_to_read(bytestream.unwrap());
 
-            runtime.block_on(async {
-                let vec = Vec::new();
-                while let Some()
-                println!("{:?}", bytes);
-            });
-
-            //let read = bytestream_to_read(bytestream.unwrap());
-
-            FileResponse::not_found()
-
-            // FileResponse::ok(
-            //     read,
-            //     response_object.content_type
-            //         .unwrap_or("application/octet-stream".to_string())
-            //         .parse()
-            //         .unwrap_or(ContentType::Binary),
-            //     ContentLength(response_object.content_length.unwrap_or(0))
-            // )
+            FileResponse::ok(
+                read,
+                response_object.content_type
+                    .unwrap_or("application/octet-stream".to_string())
+                    .parse()
+                    .unwrap_or(ContentType::Binary),
+                ContentLength(response_object.content_length.unwrap_or(0))
+            )
         },
         Err(error) => {
             println!("An error occurred: {}\n\treturning NotFound", error);
@@ -107,14 +88,14 @@ where
     type Item = Vec<I::Item>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut chunk = Vec::new();
+        let mut chunk = Vec::with_capacity(self.size);
 
-        for _ in 0..self.size {
-            if let Some(v) = self.iter.next() {
-                chunk.push(v);
-            } else {
+        while let Some(v) = self.iter.next() {
+            if chunk.len() >= self.size {
                 break;
             }
+
+            chunk.push(v);
         }
 
         if chunk.len() > 0 {
@@ -127,6 +108,16 @@ where
 
 fn bytestream_to_read(bs: ByteStream) -> impl Read + Send {
     bs.into_blocking_read()
+}
+
+// Create an iterator around a reader to return x from the reader
+struct IterativeReader<T: Read> {
+    inner: T,
+    chunk_size: usize,
+}
+
+impl<T: Read> Iterator for IterativeReader<T> {
+    type Item = Vec<u8>;
 }
 
 fn read_to_bytestream<R: Read + Send + Sync + 'static>(read: R) -> ByteStream {
@@ -172,6 +163,7 @@ impl From<ContentLength> for Header<'_> {
 pub fn create_file(
     file_data: Data,
     bucket_metadata: State<BucketMetadata>,
+    runtime: State<Runtime>,
     length: ContentLength,
 ) -> ApiResponse<UploadResult> {
     let file_id = Uuid::new_v4().to_simple();
@@ -198,18 +190,7 @@ pub fn create_file(
     };
 
     let future = client.put_object(req);
-    let mut runtime = match Runtime::new() {
-        Ok(rt) => rt,
-        Err(error) => {
-            println!("Failed to create tokio runtime: {}", error);
-            return ApiResponse {
-                json: Json(None),
-                status: Status::InternalServerError,
-            };
-        }
-    };
-
-    let result = runtime.block_on(future);
+    let result = runtime.handle().block_on(future);
 
     match result {
         Ok(put_output) => {

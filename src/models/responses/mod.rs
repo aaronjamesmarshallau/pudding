@@ -40,12 +40,27 @@ impl<T: Read + 'static> FileResponse<T> {
 
 impl<'r, T: Read> Responder<'r> for FileResponse<T> {
     fn respond_to(self, _: &Request) -> rocket::response::Result<'r> {
-        rocket::response::Response::build()
-            .streamed_body(self.file_data.unwrap())
-            .status(self.status)
-            .header(self.content_type)
-            .header(self.content_length)
-            .ok()
+        match self.file_data {
+            Some(file_data) => {
+                let reader = file_data;
+
+                rocket::response::Response::build()
+                    .streamed_body(reader)
+                    .status(self.status)
+                    .header(self.content_type)
+                    .header(self.content_length)
+                    .ok()
+            },
+            None => {
+                rocket::response::Response::build()
+                    .status(self.status)
+                    .header(self.content_type)
+                    .header(self.content_length)
+                    .ok()
+            }
+        }
+
+
     }
 }
 

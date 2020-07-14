@@ -3,6 +3,7 @@
 #[macro_use]
 extern crate rocket;
 
+use tokio::runtime::Runtime;
 use crate::models::state::BucketMetadata;
 use rusoto_credential::StaticProvider;
 
@@ -29,9 +30,11 @@ fn main() {
     dotenv::dotenv().ok();
 
     let bucket_metadata = initialize_bucket_metadata();
+    let runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     rocket::ignite()
         .manage(bucket_metadata)
+        .manage(runtime)
         .mount(
             "/",
             routes![
