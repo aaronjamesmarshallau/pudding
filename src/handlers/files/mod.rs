@@ -110,16 +110,6 @@ fn bytestream_to_read(bs: ByteStream) -> impl Read + Send {
     bs.into_blocking_read()
 }
 
-// Create an iterator around a reader to return x from the reader
-struct IterativeReader<T: Read> {
-    inner: T,
-    chunk_size: usize,
-}
-
-impl<T: Read> Iterator for IterativeReader<T> {
-    type Item = Vec<u8>;
-}
-
 fn read_to_bytestream<R: Read + Send + Sync + 'static>(read: R) -> ByteStream {
     let bytes = read.bytes(); // Iterator<Item = Result<u8>>
     let chunks = bytes.chunks(4096); // Iterator<Item = Vec<Result<u8>>>
