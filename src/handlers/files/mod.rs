@@ -188,8 +188,7 @@ pub fn create_file(
     };
 
 	let future = client.put_object(req);
-	let mut runtime = Runtime::new().unwrap();
-    let result = runtime.block_on(future);
+    let result = runtime.handle().block_on(future);
 
     match result {
         Ok(put_output) => {
