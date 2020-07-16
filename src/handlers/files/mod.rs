@@ -91,16 +91,20 @@ where
         let mut chunk = Vec::with_capacity(self.size);
 
         while let Some(v) = self.iter.next() {
+			chunk.push(v);
+
             if chunk.len() >= self.size {
                 break;
-            }
-
-            chunk.push(v);
+			}
         }
 
         if chunk.len() > 0 {
+			if chunk.len() != self.size {
+				println!("Chunk length {}", chunk.len());
+			}
             Some(chunk)
         } else {
+			println!("Returned nonechunk");
             None
         }
     }
@@ -153,8 +157,8 @@ impl From<ContentLength> for Header<'_> {
 pub fn create_file(
     file_data: Data,
     bucket_metadata: State<BucketMetadata>,
-    runtime: State<Runtime>,
     length: ContentLength,
+    runtime: State<Runtime>,
 ) -> ApiResponse<UploadResult> {
     let file_id = Uuid::new_v4().to_simple();
     let metadata = bucket_metadata.inner();
@@ -169,18 +173,23 @@ pub fn create_file(
         HttpClient::new().expect("failed to create request dispatcher"),
         credentials,
         region,
-    );
+	);
+
+	let ContentLength(length) = length;
+
+	println!("ContentLength: {}", length);
 
     let req = PutObjectRequest {
         bucket: bucket_name.to_owned(),
         key: file_id.to_string(),
         body: Some(stream),
-        content_length: Some(length.0),
+        content_length: Some(length),
         ..Default::default()
     };
 
-    let future = client.put_object(req);
-    let result = runtime.handle().block_on(future);
+	let future = client.put_object(req);
+	let mut runtime = Runtime::new().unwrap();
+    let result = runtime.block_on(future);
 
     match result {
         Ok(put_output) => {

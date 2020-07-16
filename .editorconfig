@@ -4,5 +4,4 @@ trim_trailing_whitespace = true
 
 [*.rs]
 tab_width = 4
-indent_size = tab
-indent_style = space
+indent_style = tab
