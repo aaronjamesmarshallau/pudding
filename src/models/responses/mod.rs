@@ -1,10 +1,10 @@
-use crate::handlers::files::ContentLength;
-use std::io::Read;
-use serde::Serialize;
+use crate::models::streams::ContentLength;
 use rocket_contrib::json::Json;
 use rocket::http::{ContentType, Status};
 use rocket::response::{Responder};
 use rocket::Request;
+use serde::Serialize;
+use std::io::Read;
 
 /// A response for a file stream
 pub struct FileResponse<T: Read + 'static> {
@@ -15,6 +15,8 @@ pub struct FileResponse<T: Read + 'static> {
 }
 
 impl<T: Read + 'static> FileResponse<T> {
+	/// Creates a new file response from the provided optional T, status,
+	/// ContentType, and ContentLength
     pub fn new(
         read: Option<T>,
         status: Status,
@@ -29,10 +31,13 @@ impl<T: Read + 'static> FileResponse<T> {
         }
     }
 
+	/// Creates a new FileResponse with an Ok Status from the provided T,
+	/// ContentType, and ContentLength
     pub fn ok(cur: T, content_type: ContentType, content_length: ContentLength) -> Self {
         FileResponse::new(Some(cur), Status::Ok, content_type, content_length)
     }
 
+	/// Creates a new FileResponse with a NotFound Status.
     pub fn not_found() -> Self {
         FileResponse::new(None, Status::BadRequest, ContentType::default(), ContentLength(0))
     }
@@ -64,6 +69,7 @@ impl<'r, T: Read> Responder<'r> for FileResponse<T> {
     }
 }
 
+/// A general API response that wraps a JSON response and status code.
 pub struct ApiResponse<T> {
     pub json: Json<Option<T>>,
     pub status: Status,
@@ -76,4 +82,10 @@ impl<'r, T: Serialize> Responder<'r> for ApiResponse<T> {
             .header(ContentType::JSON)
             .ok()
     }
+}
+
+/// A data structure that represents the result of uploading a file.
+#[derive(Serialize)]
+pub struct UploadResult {
+    pub file_id: String,
 }

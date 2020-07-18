@@ -1,28 +1,29 @@
-use rocket::http::ContentType;
-use rocket::http::Header;
-use rusoto_s3::GetObjectRequest;
-use rocket::request::Outcome;
-use rocket::Request;
-use rocket::request::FromRequest;
-use crate::models::results::UploadResult;
-use crate::models::responses::ApiResponse;
+use crate::models::responses::{ApiResponse, FileResponse, UploadResult};
 use crate::models::state::BucketMetadata;
-use crate::models::responses::FileResponse;
+use crate::models::streams::{Chunkable, ContentLength};
 use core::iter::FromIterator;
 use futures::stream::{self};
+use rocket::{Data, State};
+use rocket::http::{ContentType, Status};
 use rocket_contrib::json::Json;
-use rusoto_core::ByteStream;
+use rusoto_core::{ByteStream, HttpClient};
+use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3};
+use std::io::{Read};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-use std::io::{Read};
+fn bytestream_to_read(stream: ByteStream) -> impl Read + Send {
+    stream.into_blocking_read()
+}
 
-use rocket::State;
-use rocket::Data;
-use rocket::http::Status;
+fn read_to_bytestream<R: Read + Send + Sync + 'static>(read: R) -> ByteStream {
+    let bytes = read.bytes(); // Iterator<Item = Result<u8>>
+    let chunks = bytes.chunks(4096); // Iterator<Item = Vec<Result<u8>>>
+    let iter_chunks = chunks.map(|b| Result::from_iter(b.into_iter())); // Iterator<Item = Result<Vec<u8>>>
+    let stream = stream::iter(iter_chunks); // Stream<Item = Result<Vec<u8>>>
 
-use rusoto_core::{HttpClient};
-use rusoto_s3::{PutObjectRequest, S3Client, S3};
+    ByteStream::new(stream)
+}
 
 #[get("/api/files/<file_id>")]
 pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>, runtime: State<Runtime>) -> FileResponse<impl Read> {
@@ -65,91 +66,6 @@ pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>, runtime
             println!("An error occurred: {}\n\treturning NotFound", error);
             FileResponse::not_found()
         }
-    }
-}
-
-pub trait Chunks: Sized {
-    fn chunks(self, size: usize) -> Chunk<Self> {
-        Chunk { iter: self, size }
-    }
-}
-
-impl<T: Iterator> Chunks for T {}
-
-pub struct Chunk<I> {
-    iter: I,
-    size: usize,
-}
-
-impl<I> Iterator for Chunk<I>
-where
-    I: Iterator,
-{
-    type Item = Vec<I::Item>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut chunk = Vec::with_capacity(self.size);
-
-        while let Some(v) = self.iter.next() {
-			chunk.push(v);
-
-            if chunk.len() >= self.size {
-                break;
-			}
-        }
-
-        if chunk.len() > 0 {
-			if chunk.len() != self.size {
-				println!("Chunk length {}", chunk.len());
-			}
-            Some(chunk)
-        } else {
-			println!("Returned nonechunk");
-            None
-        }
-    }
-}
-
-fn bytestream_to_read(bs: ByteStream) -> impl Read + Send {
-    bs.into_blocking_read()
-}
-
-fn read_to_bytestream<R: Read + Send + Sync + 'static>(read: R) -> ByteStream {
-    let bytes = read.bytes(); // Iterator<Item = Result<u8>>
-    let chunks = bytes.chunks(4096); // Iterator<Item = Vec<Result<u8>>>
-    let iter_chunks = chunks.map(|b| Result::from_iter(b.into_iter())); // Iterator<Item = Result<Vec<u8>>>
-    let stream = stream::iter(iter_chunks); // Stream<Item = Result<Vec<u8>>>
-
-    ByteStream::new(stream)
-}
-
-pub struct ContentLength(pub i64);
-
-#[derive(Debug)]
-pub enum ContentLengthError {
-    BadCount,
-    Missing,
-    Invalid,
-}
-
-impl<'a, 'r> FromRequest<'a, 'r> for ContentLength {
-    type Error = ContentLengthError;
-
-    fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
-        let keys: Vec<_> = request.headers().get("Content-Length").collect();
-
-        match keys.len() {
-            0 => Outcome::Failure((Status::BadRequest, ContentLengthError::Missing)),
-            1 if keys[0].parse().unwrap_or(-1) >= 0 => Outcome::Success(ContentLength(keys[0].parse().unwrap_or(0))),
-            1 => Outcome::Failure((Status::BadRequest, ContentLengthError::Invalid)),
-            _ => Outcome::Failure((Status::BadRequest, ContentLengthError::BadCount)),
-        }
-    }
-}
-
-impl From<ContentLength> for Header<'_> {
-    fn from(content_length: ContentLength) -> Self {
-        Header::new("Content-Length", content_length.0.to_string())
     }
 }
 
