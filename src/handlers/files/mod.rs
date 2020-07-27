@@ -5,7 +5,6 @@ use core::iter::FromIterator;
 use futures::stream::{self};
 use rocket::{Data, State};
 use rocket::http::{ContentType, Status};
-use rocket_contrib::json::Json;
 use rusoto_core::{ByteStream, HttpClient};
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3};
 use std::io::{Read};
@@ -56,8 +55,7 @@ pub fn get_file(file_id: String, bucket_metadata: State<BucketMetadata>, runtime
             FileResponse::ok(
                 read,
                 response_object.content_type
-                    .unwrap_or("application/octet-stream".to_string())
-                    .parse()
+                    .and_then(|s| s.parse().ok())
                     .unwrap_or(ContentType::Binary),
                 ContentLength(response_object.content_length.unwrap_or(0))
             )
@@ -110,14 +108,14 @@ pub fn create_file(
         Ok(put_output) => {
             println!("Successfully uploaded file {} with output {:?}", file_id, put_output);
             ApiResponse {
-                json: Json(Some(UploadResult { file_id: file_id.to_string() })),
+                json: Some(UploadResult { file_id: file_id.to_string() }),
                 status: Status::Ok,
             }
         },
         Err(error) => {
             println!("Unable to create file: {}", error);
             ApiResponse {
-                json: Json(None),
+                json: None,
                 status: Status::BadRequest,
             }
         },

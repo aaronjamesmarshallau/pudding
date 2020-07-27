@@ -70,14 +70,15 @@ impl<'r, T: Read> Responder<'r> for FileResponse<T> {
 }
 
 /// A general API response that wraps a JSON response and status code.
-pub struct ApiResponse<T> {
-    pub json: Json<Option<T>>,
+pub struct ApiResponse<T: Serialize> {
+    pub json: Option<T>,
     pub status: Status,
 }
 
 impl<'r, T: Serialize> Responder<'r> for ApiResponse<T> {
     fn respond_to(self, req: &Request) -> rocket::response::Result<'r> {
-        rocket::response::Response::build_from(self.json.respond_to(req).unwrap())
+        let json_response_body = Json(self.json);
+        rocket::response::Response::build_from(json_response_body.respond_to(req).unwrap())
             .status(self.status)
             .header(ContentType::JSON)
             .ok()
