@@ -3,6 +3,8 @@
 #[macro_use]
 extern crate rocket;
 
+extern crate ctrlc;
+
 use tokio::runtime::Runtime;
 use crate::models::state::BucketMetadata;
 use rusoto_credential::StaticProvider;
@@ -32,7 +34,7 @@ fn main() {
     let bucket_metadata = initialize_bucket_metadata();
     let runtime = Runtime::new().expect("Failed to create tokio runtime");
 
-    rocket::ignite()
+    let rocket_ship = rocket::ignite()
         .manage(bucket_metadata)
         .manage(runtime)
         .mount(
@@ -41,6 +43,18 @@ fn main() {
                 handlers::files::get_file,
                 handlers::files::create_file,
             ],
-        )
-        .launch();
+        );
+
+    let result = ctrlc::set_handler(move || {
+        std::process::exit(0);
+    });
+
+    match result {
+        Ok(_) => { },
+        Err(err) => {
+            println!("{}", err);
+        }
+    }
+
+    rocket_ship.launch();
 }
