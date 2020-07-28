@@ -19,3 +19,4 @@ uuid = { version = "0.8", features = ["v4"]}
 rusoto_core = "0.44.0"
 rusoto_s3 = "0.44.0"
 rusoto_credential = "0.44.0"
+ctrlc = "3.1.5"
