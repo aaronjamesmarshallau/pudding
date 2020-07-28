@@ -9,4 +9,4 @@ jobs:
         with:
           toolchain: nightly
           default: true
-      - run: cd src && cargo build --release --all-features
+      - run: cd src && cargo check --release --all-features
