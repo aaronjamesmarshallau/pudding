@@ -1,0 +1,50 @@
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-container:
+    runs-on: ubuntu-latest
+    name: Create Container Image
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v2
+    - name: Container Build
+      id: build
+      run: docker build . -t i18u/pudding
+    - name: Save Image
+      id: save
+      run: docker save i18u/pudding > pudding.tar
+    - name: Upload Artifact
+      id: upload
+      uses: actions/upload-artifact@master
+      with:
+        name: pudding
+        path: pudding.tar
+  push-to-latest:
+    needs: build-container
+    runs-on: ubuntu-latest
+    name: Push to Latest
+    steps:
+    - name: Download Artifact
+      id: download
+      uses: actions/download-artifact@master
+      with:
+        name: pudding
+        path: .
+    - name: Load Image
+      id: load
+      run: docker load --input pudding.tar
+    - name: Tag Image
+      id: tag
+      run: docker tag i18u/pudding i18u/pudding:latest
+    - name: Docker Login
+      id: login
+      env:
+        DOCKER_USER: ${{ secrets.DOCKER_USER }}
+        DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+      run: docker login -u $DOCKER_USER -p $DOCKER_TOKEN
+    - name: Push Image
+      id: push
+      run: docker push i18u/pudding:latest
